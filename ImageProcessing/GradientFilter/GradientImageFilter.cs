@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using ImageProcessing.Model;
@@ -23,7 +24,7 @@ namespace ImageProcessing.GradientFilter
 
         private static readonly int[,] PrewittXMatrix = {
             { -1, 0, +1 },
-            { -2, 0, +2 },
+            { -1, 0, +1},
             { -1, 0, +1 }
         };
 
@@ -34,15 +35,15 @@ namespace ImageProcessing.GradientFilter
         };
 
         private static readonly int[,] SobelFeldmanXMatrix = {
-            { -1, 0, +1 },
-            { -2, 0, +2 },
-            { -1, 0, +1 }
+            { +3,  0, -3  },
+            { +10, 0, -10 },
+            { +3,  0, -3  }
         };
 
         private static readonly int[,] SobelFeldmanYMatrix = {
-            {-3, -10, -3},
+            {+3, +10, +3},
             { 0,   0,  0},
-            {+3, +10, +3}
+            {-3, -10, -3}
         };
 
         public string FilterDescription()
@@ -197,17 +198,19 @@ namespace ImageProcessing.GradientFilter
                         throw new ArgumentOutOfRangeException();
                 }
 
-                var bitmapDataResult = result.LockBits(new Rectangle(0, 0, result.Width, result.Height), ImageLockMode.WriteOnly, result.PixelFormat);
+                var bitmapDataResult = result.LockBits(new Rectangle(0, 0, result.Width, result.Height), ImageLockMode.ReadWrite, result.PixelFormat);
                 var resultImageData = bitmapDataResult.Scan0;
+                var m = 0;
 
+                
                 for (var y = 1; y < (grayscaleHeigth - 1); ++y)
                 {
                     var scanline = (byte*)resultImageData;
                     scanline += (y - 1) * bitmapDataResult.Stride;
                     for (var x = 1; x < (grayscaleWidth - 1); ++x)
                     {
-                        var gy = 0;
-                        var gx = 0;
+                        float gy = 0;
+                        float gx = 0;
                         // применяем оператор
                         for (var matX = 0; matX < 3; ++matX)
                         {
@@ -220,23 +223,35 @@ namespace ImageProcessing.GradientFilter
                                 gx += currentGrayVal*yMatrix[matX, matY];
                             }
                         }
-                        var res = Math.Abs(gx) + Math.Abs(gy);
-                        res = res < 0 ? 0 : res;
-                        res = res > 255 ? 255 : res;
 
-                        // ?излишне здесь честно длинну вектора вычислять?
-                        // var res = (int) Math.Sqrt(gx * gx + gy * gy);
-
-                        *(scanline + rOffset) = (byte)res;
-                        *(scanline + gOffset) = (byte)res;
-                        *(scanline + bOffset) = (byte)res;
-                        *(scanline + aOffset) = 0xff;
+                        var res = (int) Math.Sqrt(gx * gx + gy * gy);
+                        m = Math.Max(res, m);
+                        
+                        *(int*)scanline = res;
                         // next pixel
                         scanline += 4;
                     }
                 }
+
+                for (var y = 1; y < (grayscaleHeigth - 1); ++y)
+                {
+                    var scanline = (byte*) resultImageData;
+                    scanline += (y - 1) * bitmapDataResult.Stride;
+                    for (var x = 1; x < (grayscaleWidth - 1); ++x)
+                    {
+                        var res = (*(int*) scanline) / (m / 255);
+                        *(scanline + rOffset) = (byte)res;
+                        *(scanline + gOffset) = (byte)res;
+                        *(scanline + bOffset) = (byte)res;
+                        *(scanline + aOffset) = 0xff;
+                        scanline += 4;
+                    }
+                }
+
+
                 result.UnlockBits(bitmapDataResult);
-            }   
+                Debug.WriteLine(m);
+            }
             return result;
         }
     }
